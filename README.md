@@ -1,3 +1,3 @@
 ﻿Semantic Versioning
 ===================
-See [semver.org](semver.org)
+See [semver.org](http://semver.org)
