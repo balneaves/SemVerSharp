@@ -184,5 +184,21 @@ namespace SemVerSharp
 
             return primary;
         }
+
+        public override bool Equals(object obj)
+        {
+            var rhs = obj as SemanticVersion;
+            if (rhs != null)
+            {
+                return CompareTo(rhs) == 0;
+            }
+
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return ToString().GetHashCode();
+        }
     }
 }
