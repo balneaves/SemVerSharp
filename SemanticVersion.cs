@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -6,48 +7,48 @@ using System.Text.RegularExpressions;
 
 namespace SemVerSharp
 {
-    public class SemanticVersion
+    public class SemanticVersion : IComparable<SemanticVersion>
     {
         private static readonly Regex VersionStringFormat = new Regex(@"^([0-9]+)\.([0-9]+)\.([0-9]+)([-+]{1}[a-zA-Z0-9-\.:]*)?$", RegexOptions.Compiled);
 
-        public int Major { get; private set; }
-        public int Minor { get; private set; }
-        public int Patch { get; private set; }
+        public int Major { get { return (int)parts[0]; } }
+        public int Minor { get { return (int)parts[1]; } }
+        public int Patch { get { return (int)parts[2]; } }
 
-        private readonly List<string> preReleaseParts;
-        private ReadOnlyCollection<string> PreRelease
+        private readonly List<object> parts = new List<object>();
+
+        public ReadOnlyCollection<string> VersionInformation
         {
-            get { return preReleaseParts.AsReadOnly(); }
+            get
+            {
+                return parts.Count > 3 ? parts.GetRange(3, parts.Count - 3).Select(part => part.ToString()).ToList().AsReadOnly() : new List<string>().AsReadOnly();
+            }
         }
 
-        private readonly List<string> buildParts;
-
-        public ReadOnlyCollection<string> Build
-        {
-            get { return buildParts.AsReadOnly(); }
-        }
-
-        public bool IsPreRelease
-        {
-            get { return ((preReleaseParts != null) && (preReleaseParts.Count > 0)); }
-        }
-
-        public bool IsBuild
-        {
-            get { return ((buildParts != null) && (buildParts.Count > 0)); }
-        }
+        public bool IsPreRelease { get; private set; }
+        public bool IsBuild { get; private set; }
 
         public SemanticVersion(int major, int minor, int patch)
         {
-            Major = major;
-            Minor = minor;
-            Patch = patch;
+            parts.Add(major);
+            parts.Add(minor);
+            parts.Add(patch);
+
+            IsBuild = false;
+            IsPreRelease = false;
         }
 
+
+        /// <summary>
+        /// Creates a version from a standard windows/.net version number
+        /// </summary>
         public SemanticVersion(int major, int minor, int patch, int build)
             : this(major, minor, patch)
         {
-            buildParts = new List<string> { "build", build.ToString(CultureInfo.InvariantCulture) };
+            IsBuild = true;
+
+            parts.Add("build");
+            parts.Add(build);
         }
 
         public static SemanticVersion Parse(string version)
@@ -57,20 +58,36 @@ namespace SemVerSharp
             {
                 var semanticVersion = new SemanticVersion
                     (
-                         Int32.Parse(match.Groups[0].Value),
                          Int32.Parse(match.Groups[1].Value),
-                         Int32.Parse(match.Groups[2].Value)
+                         Int32.Parse(match.Groups[2].Value),
+                         Int32.Parse(match.Groups[3].Value)
                     );
 
                 if (match.Groups[3].Success)
                 {
-                    if (match.Groups[3].Value.StartsWith("-"))
+                    string extraVersion = match.Groups[4].Value;
+                    if (extraVersion.StartsWith("-"))
                     {
-
+                        semanticVersion.IsPreRelease = true;
+                        extraVersion = extraVersion.TrimStart('-');
                     }
                     else
                     {
+                        semanticVersion.IsBuild = true;
+                        extraVersion = extraVersion.Trim('+');
+                    }
 
+                    foreach (var part in extraVersion.Split(new[]{'.'}, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        int value;
+                        if (Int32.TryParse(part, out value))
+                        {
+                            semanticVersion.parts.Add(value);
+                        }
+                        else
+                        {
+                            semanticVersion.parts.Add(part);
+                        }
                     }
                 }
 
@@ -86,17 +103,22 @@ namespace SemVerSharp
             return VersionStringFormat.IsMatch(version);
         }
 
+        public int CompareTo(SemanticVersion other)
+        {
+            throw new NotImplementedException();
+        }
+
         public override string ToString()
         {
             var primary = String.Format("{0}.{1}.{2}", Major, Minor, Patch);
 
             if (IsPreRelease)
             {
-                primary += String.Format("-{0}", String.Join(".", preReleaseParts));
+                primary += String.Format("-{0}", String.Join(".", VersionInformation));
             }
             else if (IsBuild)
             {
-                primary += String.Format("+{0}", String.Join(".", buildParts));
+                primary += String.Format("+{0}", String.Join(".", VersionInformation));
             }
 
             return primary;
