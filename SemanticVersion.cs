@@ -63,7 +63,7 @@ namespace SemVerSharp
                 parts.Add(Int32.Parse(match.Groups[2].Value));
                 parts.Add(Int32.Parse(match.Groups[3].Value));
 
-                if (match.Groups[3].Success)
+                if (match.Groups[4].Success)
                 {
                     string extraVersion = match.Groups[4].Value;
                     if (extraVersion.StartsWith("-"))
