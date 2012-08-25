@@ -2,7 +2,6 @@
 using System.Linq;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace SemVerSharp
@@ -21,12 +20,13 @@ namespace SemVerSharp
         {
             get
             {
-                return parts.Count > 3 ? parts.GetRange(3, parts.Count - 3).Select(part => part.ToString()).ToList().AsReadOnly() : new List<string>().AsReadOnly();
+                return parts.Count > 4 ? parts.GetRange(4, parts.Count - 4).Select(part => part.ToString()).ToList().AsReadOnly() : new List<string>().AsReadOnly();
             }
         }
 
-        public bool IsPreRelease { get; private set; }
-        public bool IsBuild { get; private set; }
+        public bool IsStable { get { return ((int)parts[3]) == 1; } }
+        public bool IsPreRelease { get { return ((int)parts[3]) == 0; } }
+        public bool IsBuild { get { return ((int)parts[3]) == 2; } }
 
         public SemanticVersion(int major, int minor, int patch)
         {
@@ -34,8 +34,8 @@ namespace SemVerSharp
             parts.Add(minor);
             parts.Add(patch);
 
-            IsBuild = false;
-            IsPreRelease = false;
+            //Add the stable flag to allow prerelease/build/stable comparison
+            parts.Add(1);
         }
 
 
@@ -43,69 +43,130 @@ namespace SemVerSharp
         /// Creates a version from a standard windows/.net version number
         /// </summary>
         public SemanticVersion(int major, int minor, int patch, int build)
-            : this(major, minor, patch)
         {
-            IsBuild = true;
+            parts.Add(major);
+            parts.Add(minor);
+            parts.Add(patch);
+
+            parts.Add(2);
 
             parts.Add("build");
             parts.Add(build);
         }
 
-        public static SemanticVersion Parse(string version)
+        public SemanticVersion(string version)
         {
             var match = VersionStringFormat.Match(version);
             if (match.Success)
             {
-                var semanticVersion = new SemanticVersion
-                    (
-                         Int32.Parse(match.Groups[1].Value),
-                         Int32.Parse(match.Groups[2].Value),
-                         Int32.Parse(match.Groups[3].Value)
-                    );
+                parts.Add(Int32.Parse(match.Groups[1].Value));
+                parts.Add(Int32.Parse(match.Groups[2].Value));
+                parts.Add(Int32.Parse(match.Groups[3].Value));
 
                 if (match.Groups[3].Success)
                 {
                     string extraVersion = match.Groups[4].Value;
                     if (extraVersion.StartsWith("-"))
                     {
-                        semanticVersion.IsPreRelease = true;
+                        parts.Add(0);
                         extraVersion = extraVersion.TrimStart('-');
                     }
                     else
                     {
-                        semanticVersion.IsBuild = true;
+                        parts.Add(2);
                         extraVersion = extraVersion.Trim('+');
                     }
 
-                    foreach (var part in extraVersion.Split(new[]{'.'}, StringSplitOptions.RemoveEmptyEntries))
+                    foreach (var part in extraVersion.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries))
                     {
                         int value;
                         if (Int32.TryParse(part, out value))
                         {
-                            semanticVersion.parts.Add(value);
+                            parts.Add(value);
                         }
                         else
                         {
-                            semanticVersion.parts.Add(part);
+                            parts.Add(part);
                         }
                     }
                 }
-
-                return semanticVersion;
+                else
+                {
+                    parts.Add(1);
+                }
+            }
+            else
+            {
+                //TODO : better, more discriptive error message with link to semver.org
+                throw new FormatException("Version is not in the correct format");
             }
 
-            //TODO : better, more discriptive error message with link to semver.org
-            throw new FormatException("Version is not in the correct format");
+        }
+        public static SemanticVersion Parse(string version)
+        {
+            return new SemanticVersion(version);
         }
 
-        public bool IsValid(string version)
+        public static bool TryParse(string version, out SemanticVersion semanticVersion)
+        {
+            try
+            {
+                if (IsValid(version))
+                {
+                    semanticVersion = new SemanticVersion(version);
+                    return true;
+                }
+                semanticVersion = null;
+                return false;
+            }
+            catch
+            {
+                semanticVersion = null;
+                return false;
+            }
+        }
+
+        public static bool IsValid(string version)
         {
             return VersionStringFormat.IsMatch(version);
         }
 
         public int CompareTo(SemanticVersion other)
         {
-            throw new NotImplementedException();
+            for (int i = 0; i < (other.parts.Count > parts.Count ? other.parts.Count : parts.Count); i++)
+            {
+                //If this has more parts to other and was equal up to now, then this is later version
+                if (i >= other.parts.Count)
+                {
+                    return 1;
+                }
+                //If other has more parts than this and was equal up to now, then other is a later version
+                if (i >= parts.Count)
+                {
+                    return -1;
+                }
+
+                //If both parts are Int32 compare as numeric
+                if ((parts[i] is Int32) && (other.parts[i] is Int32))
+                {
+                    int result = ((int)parts[i]).CompareTo((int)other.parts[i]);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+                else
+                {
+                    int result = String.Compare(parts[i].ToString(), other.parts[i].ToString(), StringComparison.Ordinal);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+            }
+
+            //If we get this far then everything was identical
+            return 0;
         }
 
         public override string ToString()
